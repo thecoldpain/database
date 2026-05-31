@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NBA Conferencia Este vs Oeste</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="nba-conferences.css">
+</head>
+<body>
+<header class="bg-primary text-white py-4 mb-4">
+    <div class="container d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="h3 mb-0">NBA — Este vs Oeste</h1>
+            <small class="text-white-50">Seguimiento de partidos y standings</small>
+        </div>
+        <div class="d-flex gap-2">
+            <!-- Enlace a login (crear login.html luego) -->
+            <a id="login-link" href="loginnba.html" class="btn btn-outline-light">Iniciar sesión</a>
+            <!-- Botón admin que se mostrará solo si hay sesión de admin -->
+            <a id="admin-btn" href="admin.html" class="btn btn-warning d-none">Panel Admin</a>
+        </div>
+    </div>
+</header>
+
+<main class="container mb-5">
+    <section id="standings" class="mb-4">
+        <h2 class="h5 mb-3">Clasificación por conferencia</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white"><strong>Conferencia Este</strong></div>
+                    <div class="card-body p-2"><div id="east-standings" class="table-responsive">Cargando...</div></div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-danger text-white"><strong>Conferencia Oeste</strong></div>
+                    <div class="card-body p-2"><div id="west-standings" class="table-responsive">Cargando...</div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="recent-games">
+        <h2 class="h5 mb-3">Partidos recientes</h2>
+        <div class="card shadow-sm">
+            <div class="card-body p-2"><div id="games-list" class="table-responsive">Cargando partidos...</div></div>
+        </div>
+    </section>
+</main>
+
+<footer class="text-center text-muted py-3">
+    Datos provistos desde la base de datos interna. Actualiza después de cada partido.
+</footer>
+
+<script>
+    // Ocultar/mostrar botón admin según estado de login (guardado en localStorage)
+    function checkAdminVisibility(){
+        const isAdmin = localStorage.getItem('nba_is_admin') === '1';
+        document.getElementById('admin-btn').classList.toggle('d-none', !isAdmin);
+    }
+
+    // Cargar standings desde endpoint PHP
+    async function loadStandings(){
+        try{
+            const res = await fetch('/api/standings.php');
+            if(!res.ok) throw new Error(res.status);
+            const data = await res.json();
+            const east = data.filter(t=>t.Conference==='East');
+            const west = data.filter(t=>t.Conference==='West');
+            renderStandingsTable(east,'east-standings');
+            renderStandingsTable(west,'west-standings');
+        }catch(e){
+            document.getElementById('east-standings').innerHTML = '<p class="text-danger">Error cargando datos</p>';
+            document.getElementById('west-standings').innerHTML = '<p class="text-danger">Error cargando datos</p>';
+            console.error(e);
+        }
+    }
+
+    // Cargar partidos recientes
+    async function loadRecentGames(){
+        try{
+            const res = await fetch('/api/games.php');
+            if(!res.ok) throw new Error(res.status);
+            const games = await res.json();
+            renderGamesTable(games.slice(0,20)); // últimos 20
+        }catch(e){
+            document.getElementById('games-list').innerHTML = '<p class="text-danger">Error cargando partidos</p>';
+            console.error(e);
+        }
+    }
+
+    function renderStandingsTable(teams,containerId){
+        const container = document.getElementById(containerId);
+        if(!teams || teams.length===0){ container.innerHTML = '<p class="text-muted m-2">No hay datos</p>'; return; }
+        const sorted = [...teams].sort((a,b)=>{
+            const ta = (a.Wins||0)+(a.Loses||0), tb = (b.Wins||0)+(b.Loses||0);
+            const pa = ta>0?(a.Wins/ta):0, pb = tb>0?(b.Wins/tb):0;
+            return pb-pa;
+        });
+        let html = '<table class="table table-sm mb-0"><thead><tr><th>#</th><th>Equipo</th><th>Div</th><th>V</th><th>D</th><th>J</th><th>%</th></tr></thead><tbody>';
+        sorted.forEach((t,i)=>{
+            const games = (t.Wins||0)+(t.Loses||0);
+            const pct = games>0?((t.Wins||0)/games*100).toFixed(1):'0.0';
+            html += `<tr><td>${i+1}</td><td>${escapeHtml(t.TeamName)}</td><td>${escapeHtml(t.Division||'')}</td><td>${t.Wins||0}</td><td>${t.Loses||0}</td><td>${games}</td><td>${pct}%</td></tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function renderGamesTable(games){
+        const container = document.getElementById('games-list');
+        if(!games || games.length===0){ container.innerHTML = '<p class="text-muted m-2">No hay partidos</p>'; return; }
+        let html = '<table class="table table-sm mb-0"><thead><tr><th>Fecha</th><th>Local</th><th>Marcador</th><th>Visitante</th><th>Estado</th></tr></thead><tbody>';
+        games.forEach(g=>{
+            const d = g.Date ? new Date(g.Date) : null;
+            const dateStr = d ? d.toLocaleString('es-ES',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+            const score = (g.HomeScore===null || g.AwayScore===null) ? '-' : `${g.HomeScore} - ${g.AwayScore}`;
+            let status = g.Status || 'Programado';
+            let cls = 'text-warning';
+            if(status.toLowerCase().includes('final')) cls='text-success', status='Final';
+            else if(status.toLowerCase().includes('in progress') || status.toLowerCase().includes('live')) cls='text-info', status='En vivo';
+            html += `<tr><td>${dateStr}</td><td>${escapeHtml(g.HomeTeam)}</td><td>${score}</td><td>${escapeHtml(g.AwayTeam)}</td><td class="${cls}">${escapeHtml(status)}</td></tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    // Init
+    document.addEventListener('DOMContentLoaded',()=>{
+        checkAdminVisibility();
+        loadStandings();
+        loadRecentGames();
+        setInterval(()=>{loadStandings();loadRecentGames();},30000); // refrescar cada 30 s
+    });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

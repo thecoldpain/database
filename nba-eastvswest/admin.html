@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Panel de Administración – NBA Conferencia Este vs Oeste</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body{background:#f8f9fa;}
+        .card{margin-bottom:1.5rem;border:none;box-shadow:0 .25rem .5rem rgba(0,0,0,.075);}
+        .table-hover tbody tr:hover{background-color:#f1f3f5;}
+        .btn-sm{padding:.25rem .5rem;font-size:.875rem;}
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="web_nba-conferences.html">← Volver al sitio</a>
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link" href="loginnba.html">Cerrar sesión</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <h1 class="mb-4">Panel de Administración</h1>
+
+    <!-- ---- EQUIPOS ---- -->
+    <div class="card">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">Equipos</h3>
+            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#equipoModal" data-action="create">+ Nuevo Equipo</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle" id="equiposTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Nombre</th>
+                            <th>Conferencia</th>
+                            <th>División</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- filas se rellenan con JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- PARTIDOS ---- -->
+    <div class="card">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">Partidos</h3>
+            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#partidoModal" data-action="create">+ Nuevo Partido</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle" id="partidosTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Fecha</th>
+                            <th>Local</th>
+                            <th>Resultado</th>
+                            <th>Visitante</th>
+                            <th>Estado</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- filas se rellenan con JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ---- USUARIOS ---- -->
+    <div class="card">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h3 class="mb-0">Usuarios</h3>
+            <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#usuarioModal" data-action="create">+ Nuevo Usuario</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle" id="usuariosTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Nombre completo</th>
+                            <th>Correo</th>
+                            <th>¿Admin?</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- filas se rellenan con JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==== MODAL GENÉRICO (se reutiliza para crear/editar) ==== -->
+<div class="modal fade" id="genericModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="genericForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="genericModalTitle"></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Campos se inyectan dinámicamente -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- CONFIG ----------
+    const API_BASE = '/admin.php';   // mismo dominio, mismo puerto
+
+    // ---------- STATE ----------
+    let currentAction = '';   // 'create' | 'edit'
+    let currentTable  = '';   // 'equipos' | 'partidos' | 'usuarios'
+    let editId = null;        // ID del registro que se está editando
+
+    // ---------- INIT ----------
+    document.addEventListener('DOMContentLoaded', () => {
+        loadAllTables();
+
+        // Delegamos clics en los botones de acción dentro de cada tabla
+        document.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const table = e.target.closest('table').id.replace('Table','');
+                currentTable = table;
+                const action = e.target.dataset.action;
+                currentAction = action;
+
+                if (action === 'create') {
+                    openCreateModal(table);
+                } else if (action === 'edit') {
+                    const tr = e.target.closest('tr');
+                    editId = tr.dataset.id;
+                    openEditModal(table, editId);
+                } else if (action === 'delete') {
+                    if (!confirm('¿Eliminar este registro?')) return;
+                    const tr = e.target.closest('tr');
+                    deleteRecord(table, tr.dataset.id);
+                }
+            });
+        });
+
+        // Envío del modal genérico
+        document.getElementById('genericForm').addEventListener('submit', e => {
+            e.preventDefault();
+            if (currentAction === 'create') {
+                createRecord(currentTable);
+            } else if (currentAction === 'edit') {
+                updateRecord(currentTable, editId);
+            }
+        });
+    });
+
+    // ---------- FETCH HELPERS ----------
+    async function fetchJSON(url, opts = {}) {
+        const res = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    }
+
+    // ---------- CARGA DE TABLAS ----------
+    async function loadAllTables() {
+        try {
+            const [equipos, partidos, usuarios] = await Promise.all([
+                fetchJSON(`${API_BASE}?table=equipos`),
+                fetchJSON(`${API_BASE}?table=partidos`),
+                fetchJSON(`${API_BASE}?table=usuarios`)
+            ]);
+            renderTable('equiposTable', equipos);
+            renderTable('partidosTable', partidos);
+            renderTable('usuariosTable', usuarios);
+        } catch (err) {
+            console.error(err);
+            alert('Error al cargar los datos.');
+        }
+    }
+
+    function renderTable(tableId, rows) {
+        const tbody = document.querySelector(`#${tableId} tbody`);
+        tbody.innerHTML = '';   // limpiar
+        rows.forEach((r, i) => {
+            const tr = document.createElement('tr');
+            tr.dataset.id = r.id;   // asumimos que la PK se llama 'id'
+            // Cada tabla tiene su propio renderizador
+            if (tableId === 'equiposTable') {
+                tr.innerHTML = `
+                    <td>${i+1}</td>
+                    <td>${escapeHtml(r.nombre)}</td>
+                    <td>${escapeHtml(r.conferencia)}</td>
+                    <td>${escapeHtml(r.division)}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit">Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete">Eliminar</button>
+                    </td>`;
+            } else if (tableId === 'partidosTable') {
+                const fecha = r.fecha ? new Date(r.fecha).toLocaleString('es-ES',{year:'numeric',month:'short',day:'numeric'}) : '';
+                const marcador = (r.glocal !== null && r.gvisit !== null) ? `${r.glocal} - ${r.gvisit}` : '-';
+                tr.innerHTML = `
+                    <td>${i+1}</td>
+                    <td>${fecha}</td>
+                    <td>${escapeHtml(r.equipolocal)}</td>
+                    <td>${marcador}</td>
+                    <td>${escapeHtml(r.equipovisita)}</td>
+                    <td>${escapeHtml(r.estado)}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit">Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete">Eliminar</button>
+                    </td>`;
+            } else { // usuarios
+                tr.innerHTML = `
+                    <td>${i+1}</td>
+                    <td>${escapeHtml(r.nombrecompleto)}</td>
+                    <td>${escapeHtml(r.email)}</td>
+                    <td class="text-center">${r.esadmin ? 'Sí' : 'No'}</td>
+                    <td class="text-center">
+                        <button class="btn btn-sm btn-outline-primary me-1" data-action="edit">Editar</button>
+                        <button class="btn btn-sm btn-outline-danger" data-action="delete">Eliminar</button>
+                    </td>`;
+            }
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ---------- MODAL HELPERS ----------
+    function openCreateModal(table) {
+        document.getElementById('genericModalTitle').textContent = `Crear ${table.slice(0,-1)}`;
+        const body = document.querySelector('#genericModal .modal-body');
+        body.innerHTML = getFormFields(table, null);   // null = modo creación
+        const modal = new bootstrap.Modal(document.getElementById('genericModal'));
+        modal.show();
+    }
+
+    function openEditModal(table, id) {
+        // primero traemos el registro completo
+        fetchJSON(`${API_BASE}?table=${table}&id=${id}`)
+            .then(data => {
+                document.getElementById('genericModalTitle').textContent = `Editar ${table.slice(0,-1)}`;
+                const body = document.querySelector('#genericModal .modal-body');
+                body.innerHTML = getFormFields(table, data);
+                const modal = new bootstrap.Modal(document.getElementById('genericModal'));
+                modal.show();
+            })
+            .catch(err => {
+                console.error(err);
+                alert('No se pudo cargar el registro.');
+            });
+    }
+
+    function getFormFields(table, record) {
+        // Devuelve HTML de los inputs según la tabla
+        if (table === 'equipos') {
+            return `
+                <div class="mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" name="nombre" value="${record?escapeHtml(record.nombre):''}" required></div>
+                <div class="mb-3"><label class="form-label">Conferencia</label><select class="form-select" name="conferencia" required>
+                    <option value="">--</option>
+                    <option value="Este" ${record&&record.conferencia==='Este'?'selected':''}>Este</option>
+                    <option value="Oeste" ${record&&record.conferencia==='Oeste'?'selected':''}>Oeste</option>
+                </select></div>
+                <div class="mb-3"><label class="form-label">División</label><input type="text" class="form-control" name="division" value="${record?escapeHtml(record.division):''}" required></div>`;
+        }
+        if (table === 'partidos') {
+            return `
+                <div class="mb-3"><label class="form-label">Fecha (YYYY-MM-DD HH:MM)</label><input type="datetime-local" class="form-control" name="fecha" value="${record?record.fecha.slice(0,16):''}" required></div>
+                <div class="mb-3"><label class="form-label">Equipo Local</label><input type="text" class="form-control" name="equipolocal" value="${record?escapeHtml(record.equipolocal):''}" required></div>
+                <div class="mb-3"><label class="form-label">Goles Local</label><input type="number" class="form-control" name="glocal" value="${record?record.glocal:''}" min="0" required></div>
+                <div class="mb-3"><label class="form-label">Equipo Visitante</label><input type="text" class="form-control" name="equipovisita" value="${record?escapeHtml(record.equipovisita):''}" required></div>
+                <div class="mb-3"><label class="form-label">Goles Visitante</label><input type="number" class="form-control" name="gvisit" value="${record?record.gvisit:''}" min="0" required></div>
+                <div class="mb-3"><label class="form-label">Estado</label><select class="form-select" name="estado" required>
+                    <option value="">--</option>
+                    <option value="Programado" ${record&&record.estado==='Programado'?'selected':''}>Programado</option>
+                    <option value="En vivo" ${record&&record.estado==='En vivo'?'selected':''}>En vivo</option>
+                    <option value="Final" ${record&&record.estado==='Final'?'selected':''}>Final</option>
+                </select></div>`;
+        }
+        if (table === 'usuarios') {
+            return `
+                <div class="mb-3"><label class="form-label">Nombre completo</label><input type="text" class="form-control" name="nombrecompleto" value="${record?escapeHtml(record.nombrecompleto):''}" required></div>
+                <div class="mb-3"><label class="form-label">Correo</label><input type="email" class="form-control" name="email" value="${record?escapeHtml(record.email):''}" required></div>
+                <div class="mb-3"><label class="form-label">Contraseña</label><input type="password" class="form-control" name="password" ${record?'':'required'} placeholder="Dejar en blanco para no cambiar"></div>
+                <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" name="esadmin" ${record&&record.esadmin?'checked':''}> <label class="form-check-label">¿Es administrador?</label></div>`;
+        }
+        return '<p>Tabla no soportada.</p>';
+    }
+
+    // ---------- CRUD OPERATIONS ----------
+    async function createRecord(table) {
+        const form = document.getElementById('genericForm');
+        const data = new FormData(form);
+        const obj = Object.fromEntries(data.entries());
+        // convertir campos numéricos si corresponde
+        if (table === 'partidos') {
+            if (obj.glocal !== '') obj.glocal = Number(obj.glocal);
+            if (obj.gvisit !== '') obj.gvisit = Number(obj.gvisit);
+        }
+        if (table === 'usuarios' && obj.password === '') delete obj.password; // no cambiar si vacío
+
+        try {
+            await fetchJSON(`${API_BASE}?table=${table}`, {
+                method: 'POST',
+                body: JSON.stringify(obj)
+            });
+            bootstrap.Modal.getInstance(document.getElementById('genericModal')).hide();
+            loadAllTables();   // refrescar
+        } catch (err) {
+            console.error(err);
+            alert('Error al crear el registro.');
+        }
+    }
+
+    async function updateRecord(table, id) {
+        const form = document.getElementById('genericForm');
+        const data = new FormData(form);
+        const obj = Object.fromEntries(data.entries());
+        if (table === 'partidos') {
+            if (obj.glocal !== '') obj.glocal = Number(obj.glocal);
+            if (obj.gvisit !== '') obj.gvisit = Number(obj.gvisit);
+        }
+        if (table === 'usuarios' && obj.password === '') delete obj.password;
+        obj.id = id; // enviamos el ID para que el PHP sepa qué actualizar
+
+        try {
+            await fetchJSON(`${API_BASE}?table=${table}`, {
+                method: 'PUT',
+                body: JSON.stringify(obj)
+            });
+            bootstrap.Modal.getInstance(document.getElementById('genericModal')).hide();
+            loadAllTables();
+        } catch (err) {
+            console.error(err);
+            alert('Error al actualizar el registro.');
+        }
+    }
+
+    async function deleteRecord(table, id) {
+        if (!confirm('¿Seguro que deseas eliminar este registro?')) return;
+        try {
+            await fetchJSON(`${API_BASE}?table=${table}&id=${id}`, {method:'DELETE'});
+            loadAllTables();
+        } catch (err) {
+            console.error(err);
+            alert('Error al eliminar el registro.');
+        }
+    }
+
+    // ---------- UTIL ----------
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, c=>({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+        }[c]));
+    }
+</script>
+
+<!-- Bootstrap JS (incluye Popper) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
